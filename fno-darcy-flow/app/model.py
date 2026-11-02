@@ -16,7 +16,7 @@ import numpy as np
 import torch
 
 from src.benchmark import PRESETS
-from src.data.darcy import generate
+from src.data.darcy import DATA_ROOT, generate
 from src.infer import load_model as _infer_load_model
 from src.infer import predict as _infer_predict
 from src.models.fno import FNO2d
@@ -25,8 +25,8 @@ from src.train import load_data
 GRID = 64
 # Smallest upstream preset; benchmark.py does not pass --layers, so train.py's default (4) applies.
 SMALL_CONFIG = {**PRESETS["small"], "layers": 4}
-DEFAULT_CHECKPOINT = Path("checkpoints/fno_small_random.pt")
-DEFAULT_DATA = Path("data/darcy_train.npz")
+DEFAULT_CHECKPOINT = DATA_ROOT / "checkpoints" / "fno_small_random.pt"
+DEFAULT_DATA = DATA_ROOT / "data" / "darcy_train.npz"
 DEVICE = torch.device("cpu")
 
 

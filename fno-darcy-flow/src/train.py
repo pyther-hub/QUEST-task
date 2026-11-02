@@ -34,6 +34,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from torch.utils.data.distributed import DistributedSampler
 
+from src.data.darcy import DATA_ROOT
 from src.models.fno import FNO2d, FNOBlock
 
 
@@ -169,7 +170,7 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--amp", action="store_true", help="mixed-precision training")
     p.add_argument("--num-workers", type=int, default=2)
-    p.add_argument("--out", type=Path, default=Path("checkpoints/fno_darcy.pt"))
+    p.add_argument("--out", type=Path, default=DATA_ROOT / "checkpoints" / "fno_darcy.pt")
     p.add_argument("--metrics-out", type=Path, default=None,
                    help="if set, write a JSON summary (used by the scaling benchmark)")
     args = p.parse_args()

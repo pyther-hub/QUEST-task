@@ -2,7 +2,8 @@
 
     uvicorn app.main:app --reload       # http://127.0.0.1:8000
 
-The checkpoint path comes from $FNO_CHECKPOINT (default checkpoints/fno_small_random.pt).
+The checkpoint path comes from $FNO_CHECKPOINT (default $FNO_DATA_DIR/checkpoints/fno_small_random.pt,
+$FNO_DATA_DIR defaults to ~/Desktop/QUEST-data).
 """
 
 from __future__ import annotations
