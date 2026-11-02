@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.DS_Store
+# generated artifacts (root-anchored so src/data/ is NOT matched)
+/data/
+/checkpoints/
+/scaling.md
+/scaling_memory.md
+/crossover.md
+# keep docs/prediction.png committed as a portfolio artifact
