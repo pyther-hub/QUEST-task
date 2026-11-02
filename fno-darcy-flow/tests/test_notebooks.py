@@ -212,3 +212,36 @@ def test_train_on_pdebench_style_single_file(tiny_data, tmp_path):
     run([sys.executable, str(script), "--config",
          str(write_config(tmp_path, tiny_data, "train", data_files=files))], tmp_path)
     check_train_outputs(tmp_path / "run", epochs=2)
+
+
+def test_train_early_stopping_and_gpu_report(tiny_data, tmp_path):
+    """lr=0 -> val never improves after epoch 1 -> patience 3 stops at epoch 4 of 20."""
+    script = extract_script(TRAIN_NB, "fno_ddp_train.py", tmp_path)
+    run([sys.executable, str(script), "--config",
+         str(write_config(tmp_path, tiny_data, "train", epochs=20, lr=0.0, weight_decay=0.0,
+                          patience=3, gpu_report_epochs=2))], tmp_path)
+    out = tmp_path / "run"
+    check_train_outputs(out, epochs=4)
+    ev = json.loads((out / "eval.json").read_text())
+    assert ev["stopped_early"] and ev["epochs_run"] == 4 and ev["best_epoch"] == 1
+    assert [r["epoch"] for r in ev["gpu_first_epochs"]] == [1, 2]
+    log = (out / "train.log").read_text()
+    assert "early stopping at epoch 4" in log and "no improvement 3/3" in log
+    assert "gpu usage epoch  1: n/a" in log and "gpu usage, first 2 epochs: n/a" in log
+
+
+def test_gpu_summary_flags_low_utilisation(tmp_path, caplog):
+    import importlib.util, logging
+    path = extract_script(TRAIN_NB, "fno_ddp_train.py", tmp_path)
+    spec = importlib.util.spec_from_file_location("fno_ddp_train_nb", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    report = [{"epoch": e, "util_pct": {0: 95.0, 1: 40.0 + e}, "mem_used_mb": {0: 3000, 1: 2900 + e},
+               "torch_peak_mb": 1.0} for e in (1, 2)]
+    log = logging.getLogger("t_gpu"); log.setLevel(logging.INFO)
+    with caplog.at_level(logging.INFO, logger="t_gpu"):
+        mod.log_gpu_summary(report, log)
+    text = caplog.text
+    assert "GPU0 mean util 95.0% (min 95%)  max mem 3000 MB" in text
+    assert "GPU1 mean util 41.5% (min 41%)  max mem 2902 MB" in text
+    assert "GPU1 is under 70% busy" in text and "GPU0 is under" not in text

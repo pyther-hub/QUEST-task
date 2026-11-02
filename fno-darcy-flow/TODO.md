@@ -57,3 +57,11 @@ Status (2026-11-02): demo works end to end with the **untrained** small FNO
 - [ ] `/sample` solves the PDE per request (~0.14 s measured); cache by seed if it gets slow.
 - [ ] `data/darcy_train.npz` (1200 samples) and `checkpoints/` are gitignored; on a fresh clone
       `python -m app.model` regenerates both (~15 s measured).
+
+## Later phase: bigger models
+- [ ] Add a function to switch model size by name, e.g. `build_model(preset)` with presets
+      `small` (modes 12, width 32, layers 4; 2,368,001 params) and `large` (modes 24, width 64,
+      layers 4; 37,774,081 params), plus custom (modes, width, layers). Use it in notebook 02's
+      config (`MODEL = "small"`) and record the preset in the checkpoint `config`, so
+      `load_model()` and the app pick up any size unchanged.
+- [ ] Re-run `MODE="precheck"` per preset: bigger models need a smaller BATCH_SIZE per GPU.

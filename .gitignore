@@ -1,3 +1,4 @@
 .DS_Store
 # backup of the original upstream clone history (fno-darcy-flow/.git)
 /.fno-darcy-flow.git.bak/
+/runs
