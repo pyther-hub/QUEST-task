@@ -34,6 +34,8 @@ deploy/               Dockerfile, requirements.txt (pinned), make_space.sh, spac
   data/                darcy_train.npz, pdebench/*.hdf5
 export/fno_dft.py     FNO rebuilt with real DFT matmuls (no FFT) for 128x128, normalisation baked in;
                       exports web/model.onnx, model.json, golden.json, samples.*, solver fixtures
+export/fp16_onnx.py   fp16 + ONNX (fp32, fp16-weight) variants of a checkpoint, accuracy/speed vs fp32;
+                      run at the end of notebook 02 -> runs/<RUN>/export/export_eval.json
 web/                  index.html, main.js, solver.js (+ solver.test.js), model.onnx, samples.bin/json, golden.json
 tests/test_app_*.py   one test file per piece
 ```
@@ -75,7 +77,7 @@ python -m http.server 8001 -d web   # static app at http://127.0.0.1:8001
 - Lives in `src/data/darcy.py`; downloads into `$FNO_DATA_DIR/data/pdebench/` (default `~/Desktop/QUEST-data`), never inside the repo. Tests must not download; use a tiny fake HDF5.
 - Compare: solver agreement (our `solve_darcy` on PDEBench a vs PDEBench u), data stats, side-by-side PNG.
 - Notebook 01 generates training data in the PDEBench setting: 128x128 cell centres, a = 5 Gaussian bumps -> {1, 0.1}, beta = 1, exact steady solve with `solve_darcy(h=1/n, face="arithmetic")` (PDEBench's stencil). Output `darcy_{train,val,test}.hdf5` in PDEBench layout (`nu`, `tensor` (N,1,n,n)).
-- Notebook 02 reads that layout via `DATA_SOURCE = "generated" | "pdebench"` (PDEBench file split by index).
+- Notebook 02 clones pyther-hub/QUEST-task (needs main pushed) and reads that layout via `DATA_SOURCE = "generated" | "pdebench"` (PDEBench file split by index).
 - The app uses the same setting: `/sample` returns the exact test-split fields (bit-identical to `darcy_test.hdf5`).
 
 ## Not now
