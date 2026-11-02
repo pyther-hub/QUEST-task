@@ -1,0 +1,7 @@
+{
+ "checkpoint": "fno_darcy.pt",
+ "trained": true,
+ "params": 2368001,
+ "grid": 128,
+ "opset": 17
+}
