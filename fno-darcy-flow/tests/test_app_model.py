@@ -22,7 +22,7 @@ def a_field():
 
 def test_checkpoint_format(ckpt):
     raw = torch.load(ckpt)
-    assert set(raw) == {"model", "config", "stats"}
+    assert set(raw) == {"model", "config", "stats", "trained"} and raw["trained"] is False
     assert raw["config"] == SMALL_CONFIG == {"modes": 12, "width": 32, "layers": 4}
     assert set(raw["stats"]) == {"a_mean", "a_std", "u_std"}
     assert raw["stats"]["a_std"] > 0 and raw["stats"]["u_std"] > 0
@@ -38,6 +38,15 @@ def test_load_and_param_count(ckpt):
     m = load_model(ckpt)
     assert not m.model.training
     assert m.n_params == SMALL_PARAMS
+    assert m.trained is False
+
+
+def test_training_checkpoint_counts_as_trained(ckpt, tmp_path):
+    # src.train / notebook 02 save {"model", "config", "stats"} with no "trained" key.
+    raw = torch.load(ckpt)
+    del raw["trained"]
+    torch.save(raw, tmp_path / "best.pt")
+    assert load_model(tmp_path / "best.pt").trained is True
 
 
 def test_predict_shape_and_finite(ckpt, a_field):

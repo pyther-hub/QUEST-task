@@ -1,15 +1,17 @@
-"""FastAPI demo: sample Darcy problems and run the FNO surrogate on them.
+"""FastAPI demo: sample or draw Darcy problems and run the FNO surrogate on them.
 
     uvicorn app.main:app --reload       # http://127.0.0.1:8000
 
-The checkpoint path comes from $FNO_CHECKPOINT (default $FNO_DATA_DIR/checkpoints/fno_small_random.pt,
+The checkpoint path comes from $FNO_CHECKPOINT (default $FNO_DATA_DIR/checkpoints/fno_darcy.pt,
 $FNO_DATA_DIR defaults to ~/Desktop/QUEST-data).
 """
 
 from __future__ import annotations
 
 import os
+import time
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -19,9 +21,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 
 from app.model import DEFAULT_CHECKPOINT, GRID, load_model
-from src.data.darcy import gaussian_random_field, permeability_from_grf, solve_darcy
+from src.data.darcy import split_sample, solve_darcy
 
 STATIC = Path(__file__).parent / "static"
+# Held-out test split of notebooks/01_generate_dataset.ipynb (SPLITS["test"] = (500, seed 2)).
+TEST_SIZE, TEST_SEED = 500, 2
 
 
 @asynccontextmanager
@@ -55,10 +59,25 @@ class PredictRequest(BaseModel):
         return a
 
 
-def sample(seed: int) -> tuple[np.ndarray, np.ndarray]:
-    """One (a, u) pair from the upstream sampler + solver, as float32 like generate()."""
-    a = permeability_from_grf(gaussian_random_field(GRID, rng=np.random.default_rng(seed)))
-    return a.astype(np.float32), solve_darcy(a).astype(np.float32)
+class SolveRequest(PredictRequest):
+    @field_validator("a")
+    @classmethod
+    def check_positive(cls, a: list[list[float]]) -> list[list[float]]:
+        if not (np.asarray(a) > 0).all():
+            raise ValueError("a must be positive everywhere")
+        return a
+
+
+def reference(a: np.ndarray) -> np.ndarray:
+    """Exact steady solve with the discretisation the model was trained on (PDEBench's stencil)."""
+    return solve_darcy(np.asarray(a, dtype=np.float64), h=1.0 / GRID, face="arithmetic")
+
+
+@lru_cache(maxsize=64)
+def sample(index: int) -> tuple[np.ndarray, np.ndarray]:
+    """Test-split sample `index` and its reference u, as float32 like the generated files."""
+    a = split_sample(index, TEST_SIZE, TEST_SEED, GRID).astype(np.float32)
+    return a, reference(a).astype(np.float32)
 
 
 @app.get("/")
@@ -71,19 +90,30 @@ def health() -> dict:
     m = app.state.model
     return {
         "model_loaded": m is not None,
+        "trained": m.trained if m else None,
         "params": m.n_params if m else None,
+        "grid": GRID,
         "checkpoint": app.state.checkpoint,
     }
 
 
 @app.get("/sample")
-def get_sample(seed: int = Query(0, ge=0)) -> dict:
-    a, u = sample(seed)
-    return {"seed": seed, "a": a.tolist(), "u": u.tolist()}
+def get_sample(index: int = Query(0, ge=0, lt=TEST_SIZE)) -> dict:
+    a, u = sample(index)
+    return {"index": index, "a": a.tolist(), "u": u.tolist()}
 
 
 @app.post("/predict")
 def post_predict(req: PredictRequest) -> dict:
     if app.state.model is None:
         raise HTTPException(503, f"no checkpoint at {app.state.checkpoint}")
-    return {"u": app.state.model.predict(req.a).tolist()}
+    t = time.perf_counter()
+    u = app.state.model.predict(req.a)
+    return {"u": u.tolist(), "ms": (time.perf_counter() - t) * 1e3}
+
+
+@app.post("/solve")
+def post_solve(req: SolveRequest) -> dict:
+    t = time.perf_counter()
+    u = reference(req.a)
+    return {"u": u.tolist(), "ms": (time.perf_counter() - t) * 1e3}

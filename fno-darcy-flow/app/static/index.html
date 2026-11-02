@@ -5,49 +5,123 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FNO Darcy demo</title>
 <style>
-  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #6e6e73; --card: #fff; --line: #e3e3e6; --warn-bg: #fff4e5; --warn-fg: #8a4b00; }
+  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #6e6e73; --card: #fff; --line: #e3e3e6; --soft: #f0f0f2;
+          --warn-bg: #fff4e5; --warn-fg: #8a4b00; --ok-bg: #e8f5ec; --ok-fg: #1d6b34; --err: #b42318; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161618; --fg: #ececee; --muted: #9a9aa0; --card: #1f1f22; --line: #333338; --warn-bg: #3a2a12; --warn-fg: #ffcc80; }
+    :root { --bg: #161618; --fg: #ececee; --muted: #9a9aa0; --card: #1f1f22; --line: #333338; --soft: #2a2a2e;
+            --warn-bg: #3a2a12; --warn-fg: #ffcc80; --ok-bg: #16301f; --ok-fg: #8fd6a4; --err: #ff8a80; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 system-ui, -apple-system, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; }
+  main { max-width: 1180px; margin: 0 auto; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 16px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
-           background: var(--fg); color: var(--bg); cursor: pointer; }
-  button:disabled { opacity: .5; cursor: wait; }
-  input { font: inherit; width: 90px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
-          background: var(--card); color: var(--fg); }
-  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 600;
-           background: var(--warn-bg); color: var(--warn-fg); }
+  .sub { color: var(--muted); margin: 0 0 16px; max-width: 760px; }
+  code { font-size: 12.5px; background: var(--soft); padding: 1px 4px; border-radius: 4px; }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 13px;
+           background: var(--soft); color: var(--muted); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
   #status { color: var(--muted); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-  figure { margin: 0; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  #status.error { color: var(--err); }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .tabs { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; margin-bottom: 10px; }
+  .tabs button { background: transparent; color: var(--fg); border: 0; }
+  .tabs button[aria-selected="true"] { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); font-weight: 600; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  button[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: -2px; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: wait; }
+  input, select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--card); color: var(--fg); }
+  input[type=number] { width: 80px; }
+  input[type=range] { width: 110px; padding: 0; }
+  #expr { flex: 1 1 320px; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  #exprErr { color: var(--err); font-size: 13px; margin: 6px 0 0; min-height: 1em; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  figure { margin: 0; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
   figcaption { font-weight: 600; margin-bottom: 6px; }
   figcaption small { font-weight: 400; color: var(--muted); }
-  canvas.map { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; }
-  canvas.bar { width: 100%; height: 10px; display: block; margin-top: 6px; }
+  canvas.map { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; border-radius: 4px; }
+  canvas.map.draw { cursor: crosshair; touch-action: none; }
+  canvas.bar { width: 100%; height: 10px; display: block; margin-top: 6px; border-radius: 2px; }
   .range { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
-  .metric { margin-top: 12px; font-variant-numeric: tabular-nums; }
+  .metrics { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+  .metrics div span { display: block; color: var(--muted); font-size: 12px; }
+  .metrics div b { font-size: 18px; font-weight: 600; }
+  #readout { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; min-height: 1.4em; margin-top: 8px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
 </style>
 </head>
 <body>
 <main>
   <h1>FNO Darcy-flow surrogate</h1>
-  <p class="sub">−∇·(a∇u) = 1 on the unit square, 64×64 grid. Reference u from the finite-volume solver in <code>src/data/darcy.py</code>.</p>
-  <div class="controls">
-    <button id="new">New sample</button>
-    <label>seed <input id="seed" type="number" min="0" value="0"></label>
-    <span class="badge">Predictions: untrained (random weights)</span>
+  <p class="sub">−∇·(a∇u) = 1 on the unit square with u = 0 on the edge, on a 128×128 grid. Pick, draw or
+    write a permeability a(x). The Fourier Neural Operator predicts the pressure u(x), and an exact
+    finite-volume solve gives the reference.</p>
+  <div class="head">
+    <span class="badge" id="badge">loading model…</span>
     <span id="status"></span>
   </div>
+
+  <section class="card">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-pane="sample" aria-selected="true">Test sample</button>
+      <button role="tab" data-pane="draw" aria-selected="false">Draw</button>
+      <button role="tab" data-pane="func" aria-selected="false">Function</button>
+    </div>
+    <div class="pane on" id="pane-sample">
+      <div class="row">
+        <label>index <input id="index" type="number" min="0" max="499" value="0"></label>
+        <button id="random" class="primary">Random test sample</button>
+      </div>
+      <p class="hint">From the held-out test split (500 samples) that the model never saw during training.</p>
+    </div>
+    <div class="pane" id="pane-draw">
+      <div class="row">
+        <button id="brushHi" aria-pressed="true"><span class="swatch" style="background:#fde725"></span>Permeable a = 1</button>
+        <button id="brushLo" aria-pressed="false"><span class="swatch" style="background:#440154"></span>Tight a = 0.1</button>
+        <label>brush <input id="brush" type="range" min="1" max="24" value="6"></label>
+        <button id="fillLo">Fill tight</button>
+        <button id="fillHi">Fill permeable</button>
+        <button id="undo">Undo</button>
+      </div>
+      <p class="hint">Click and drag on the a(x) panel. The prediction updates when you release. You can also draw on top of a sample or a function.</p>
+    </div>
+    <div class="pane" id="pane-func">
+      <div class="row">
+        <select id="preset" aria-label="preset"></select>
+        <input id="expr" spellcheck="false" aria-label="a(x, y) expression">
+        <label><input id="snap" type="checkbox" checked> snap to {0.1, 1}</label>
+        <button id="apply" class="primary">Apply</button>
+      </div>
+      <p id="exprErr"></p>
+      <p class="hint">A JavaScript expression in <code>x</code> (left → right) and <code>y</code> (bottom → top), both in [0, 1].
+        Math functions work without a prefix: <code>sin</code>, <code>exp</code>, <code>hypot</code>, <code>PI</code>, …
+        With snap on, a true or &gt; 0.5 result gives a = 1 and anything else gives a = 0.1. With snap off, values are clamped to [0.1, 1].</p>
+    </div>
+  </section>
+
   <div class="grid" id="panels"></div>
-  <p class="metric" id="metric"></p>
+  <div id="readout"></div>
+  <div class="metrics" id="metrics"></div>
+  <p class="note">The model was trained on two-phase fields made from 5 smooth random blobs. Shapes outside that
+    family (thin lines, checkerboards, smooth values between 0.1 and 1) are out of distribution, and the error panel shows how much that costs.
+    Timings are measured on the server's CPU for one sample.</p>
 </main>
 <script>
+const N = 128, LO = 0.1, HI = 1.0;
+const UNTRAINED = "untrained (random weights)";
+
 // Colormap stops sampled from matplotlib's viridis / magma / inferno (same maps as src/infer.py).
 const CMAPS = {
   viridis: ["#440154","#482878","#3e4a89","#31688e","#26828e","#1f9e89","#35b779","#6ece58","#b5de2b","#fde725"],
@@ -55,9 +129,9 @@ const CMAPS = {
   inferno: ["#000004","#1b0c41","#4a0c6b","#781c6d","#a52c60","#cf4446","#ed6925","#fb9b06","#f7d13d","#fcffa4"],
 };
 const PANELS = [
-  { key: "a",    title: "permeability a(x)", cmap: "viridis" },
-  { key: "u",    title: "reference u(x)",    cmap: "magma" },
-  { key: "pred", title: "predicted u(x)",    note: "untrained (random weights)", cmap: "magma" },
+  { key: "a",    title: "permeability a(x)", note: "input",              cmap: "viridis" },
+  { key: "u",    title: "reference u(x)",    note: "exact solve",        cmap: "magma" },
+  { key: "pred", title: "predicted u(x)",    note: "FNO",                cmap: "magma" },
   { key: "err",  title: "|error|",           note: "|predicted − reference|", cmap: "inferno" },
 ];
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
@@ -70,70 +144,225 @@ const LUT = Object.fromEntries(Object.entries(CMAPS).map(([k, stops]) => {
   return [k, lut];
 }));
 
-const fmt = v => Math.abs(v) >= 1e-2 && Math.abs(v) < 1e3 ? v.toFixed(3) : v.toExponential(2);
+const $ = id => document.getElementById(id);
+const fmt = v => v === 0 ? "0" : Math.abs(v) >= 1e-2 && Math.abs(v) < 1e3 ? v.toFixed(3) : v.toExponential(2);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 
+// Fields are flat Float32Arrays, row-major: index r * N + c, row 0 at the top (y = 1).
+const fields = { a: new Float32Array(N * N).fill(LO), u: null, pred: null, err: null };
 const canvases = {};
 for (const p of PANELS) {
   const fig = el("figure");
-  fig.append(el("figcaption", "", p.title + (p.note ? ` <small>${p.note}</small>` : "")));
+  fig.append(el("figcaption", "", `${p.title} <small>${p.note}</small>`));
   const map = el("canvas", "map"), bar = el("canvas", "bar"), range = el("div", "range");
-  map.width = map.height = 64; bar.width = 256; bar.height = 1;
+  map.width = map.height = N; bar.width = 256; bar.height = 1;
   fig.append(map, bar, range);
-  document.getElementById("panels").append(fig);
-  canvases[p.key] = { map, range, cmap: p.cmap };
+  $("panels").append(fig);
+  canvases[p.key] = { map, range, cmap: p.cmap, fig };
   const bctx = bar.getContext("2d"), img = bctx.createImageData(256, 1), lut = LUT[p.cmap];
   for (let i = 0; i < 256; i++) img.data.set([lut[i*3], lut[i*3+1], lut[i*3+2], 255], i * 4);
   bctx.putImageData(img, 0, 0);
 }
 
-function draw(key, field) {
-  const { map, range, cmap } = canvases[key], lut = LUT[cmap];
-  const flat = field.flat(), lo = Math.min(...flat), hi = Math.max(...flat), span = hi - lo || 1;
-  const ctx = map.getContext("2d"), img = ctx.createImageData(64, 64);
-  flat.forEach((v, i) => {
-    const k = Math.round((v - lo) / span * 255) * 3;
-    img.data.set([lut[k], lut[k+1], lut[k+2], 255], i * 4);
-  });
+function extent(...fs) {
+  let lo = Infinity, hi = -Infinity;
+  for (const f of fs) for (const v of f) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  return [lo, hi];
+}
+
+function draw(key, field, lo, hi) {
+  const { map, range, cmap } = canvases[key], lut = LUT[cmap], span = hi - lo || 1;
+  const ctx = map.getContext("2d"), img = ctx.createImageData(N, N);
+  for (let i = 0; i < field.length; i++) {
+    const k = Math.round(Math.min(1, Math.max(0, (field[i] - lo) / span)) * 255) * 3;
+    img.data[i*4] = lut[k]; img.data[i*4+1] = lut[k+1]; img.data[i*4+2] = lut[k+2]; img.data[i*4+3] = 255;
+  }
   ctx.putImageData(img, 0, 0);
   range.innerHTML = `<span>${fmt(lo)}</span><span>${fmt(hi)}</span>`;
 }
 
-async function json(res) {
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+function clearOutputs() {
+  for (const k of ["u", "pred", "err"]) {
+    fields[k] = null;
+    canvases[k].map.getContext("2d").clearRect(0, 0, N, N);
+    canvases[k].range.innerHTML = "";
+  }
+  $("metrics").innerHTML = "";
+}
+
+const drawA = () => draw("a", fields.a, LO, HI);
+const toRows = f => Array.from({ length: N }, (_, r) => Array.from(f.subarray(r * N, (r + 1) * N)));
+const fromRows = rows => Float32Array.from(rows.flat());
+
+function setStatus(text, isError = false) {
+  $("status").textContent = text;
+  $("status").className = isError ? "error" : "";
+}
+
+async function post(path, a) {
+  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" },
+                                  body: JSON.stringify({ a }) });
+  if (!res.ok) throw new Error(`${path} ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-const btn = document.getElementById("new"), seedIn = document.getElementById("seed");
-const status = document.getElementById("status"), metric = document.getElementById("metric");
-
-async function run(seed) {
-  btn.disabled = true; status.textContent = "solving…";
+// Only the newest request may update the panels (drawing fires many in a row).
+let runId = 0, modelLabel = "";
+async function run() {
+  const id = ++runId, rows = toRows(fields.a);
+  setStatus("predicting and solving…");
   try {
-    const s = await json(await fetch(`/sample?seed=${seed}`));
-    draw("a", s.a); draw("u", s.u);
-    status.textContent = "predicting…";
-    const { u: pred } = await json(await fetch("/predict", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ a: s.a }),
-    }));
-    const err = pred.map((row, i) => row.map((v, j) => Math.abs(v - s.u[i][j])));
-    draw("pred", pred); draw("err", err);
-    const sq = f => Math.sqrt(f.flat().reduce((t, v) => t + v * v, 0));
-    metric.textContent = `seed ${seed} · relative L2 error ${fmt(sq(err) / sq(s.u))} (untrained (random weights) — expect a large error)`;
-    status.textContent = "";
+    const [p, s] = await Promise.all([post("/predict", rows), post("/solve", rows)]);
+    if (id !== runId) return;
+    fields.pred = fromRows(p.u); fields.u = fromRows(s.u);
+    fields.err = fields.pred.map((v, i) => Math.abs(v - fields.u[i]));
+    const [lo, hi] = extent(fields.u, fields.pred);
+    draw("u", fields.u, lo, hi); draw("pred", fields.pred, lo, hi);
+    draw("err", fields.err, 0, extent(fields.err)[1]);
+    const sq = f => Math.sqrt(f.reduce((t, v) => t + v * v, 0));
+    const rel = sq(fields.err) / sq(fields.u);
+    $("metrics").innerHTML = [
+      ["relative L2 error", (100 * rel).toFixed(2) + " %"],
+      ["max |error|", fmt(extent(fields.err)[1])],
+      ["FNO on CPU", p.ms.toFixed(0) + " ms"],
+      ["exact solver on CPU", s.ms.toFixed(0) + " ms"],
+      ["model", modelLabel],
+    ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+    setStatus("");
   } catch (e) {
-    status.textContent = "error: " + e.message;
-  } finally {
-    btn.disabled = false;
+    if (id === runId) { clearOutputs(); setStatus("error: " + e.message, true); }
   }
 }
 
-btn.onclick = () => { const s = Math.floor(Math.random() * 1e6); seedIn.value = s; run(s); };
-seedIn.onchange = () => run(Math.max(0, parseInt(seedIn.value) || 0));
-fetch("/health").then(json).then(h => {
-  if (!h.model_loaded) status.textContent = `no model loaded (${h.checkpoint}) — run: python -m app.model`;
-}).catch(() => {});
-run(0);
+// ---- undo history -------------------------------------------------------------------------
+const history = [];
+function snapshot() { history.push(fields.a.slice()); if (history.length > 30) history.shift(); }
+$("undo").onclick = () => { if (history.length) { fields.a = history.pop(); drawA(); run(); } };
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("undo").click(); }
+});
+
+// ---- tabs ---------------------------------------------------------------------------------
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(t => t.setAttribute("aria-selected", t === b));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === "pane-" + b.dataset.pane));
+});
+const showTab = name => document.querySelector(`.tabs button[data-pane="${name}"]`).click();
+
+// ---- test samples -------------------------------------------------------------------------
+async function loadSample(i) {
+  setStatus("loading sample…");
+  try {
+    const res = await fetch(`/sample?index=${i}`);
+    if (!res.ok) throw new Error(`/sample ${res.status}: ${await res.text()}`);
+    snapshot();
+    fields.a = fromRows((await res.json()).a); drawA(); run();
+  } catch (e) { setStatus("error: " + e.message, true); }
+}
+const clampIndex = v => Math.min(499, Math.max(0, parseInt(v) || 0));
+$("random").onclick = () => { const i = Math.floor(Math.random() * 500); $("index").value = i; loadSample(i); };
+$("index").onchange = () => { const i = clampIndex($("index").value); $("index").value = i; loadSample(i); };
+
+// ---- drawing ------------------------------------------------------------------------------
+let brushValue = HI;
+function setBrush(v) {
+  brushValue = v;
+  $("brushHi").setAttribute("aria-pressed", v === HI); $("brushLo").setAttribute("aria-pressed", v === LO);
+}
+$("brushHi").onclick = () => setBrush(HI);
+$("brushLo").onclick = () => setBrush(LO);
+$("fillLo").onclick = () => { snapshot(); fields.a.fill(LO); drawA(); run(); };
+$("fillHi").onclick = () => { snapshot(); fields.a.fill(HI); drawA(); run(); };
+
+const aMap = canvases.a.map;
+aMap.classList.add("draw");
+function cellAt(e, map) {
+  const r = map.getBoundingClientRect();
+  return [(e.clientY - r.top) / r.height * N, (e.clientX - r.left) / r.width * N];
+}
+function stamp(rf, cf) {
+  const rad = +$("brush").value / 2;
+  for (let r = Math.floor(rf - rad); r <= Math.ceil(rf + rad); r++)
+    for (let c = Math.floor(cf - rad); c <= Math.ceil(cf + rad); c++)
+      if (r >= 0 && r < N && c >= 0 && c < N && (r + 0.5 - rf) ** 2 + (c + 0.5 - cf) ** 2 <= rad * rad + 0.25)
+        fields.a[r * N + c] = brushValue;
+}
+let last = null;
+aMap.addEventListener("pointerdown", e => {
+  aMap.setPointerCapture(e.pointerId); snapshot(); showTab("draw");
+  last = cellAt(e, aMap); stamp(...last); drawA();
+});
+aMap.addEventListener("pointermove", e => {
+  if (!last) return;
+  const [r, c] = cellAt(e, aMap), steps = Math.max(1, Math.ceil(Math.hypot(r - last[0], c - last[1])));
+  for (let s = 1; s <= steps; s++) stamp(last[0] + (r - last[0]) * s / steps, last[1] + (c - last[1]) * s / steps);
+  last = [r, c]; drawA();
+});
+const endStroke = () => { if (last) { last = null; run(); } };
+aMap.addEventListener("pointerup", endStroke);
+aMap.addEventListener("pointercancel", endStroke);
+
+// ---- function input -----------------------------------------------------------------------
+const PRESETS = [
+  ["circle",            "hypot(x - 0.5, y - 0.5) < 0.3", true],
+  ["two blobs",         "hypot(x - 0.3, y - 0.3) < 0.18 || hypot(x - 0.7, y - 0.65) < 0.22", true],
+  ["wavy channel",      "abs(y - 0.5 - 0.2 * sin(2 * PI * x)) < 0.1", true],
+  ["diagonal half",     "x + y > 1", true],
+  ["checkerboard 4×4",  "(floor(4 * x) + floor(4 * y)) % 2 == 0", true],
+  ["smooth bump (not two-phase)", "0.1 + 0.9 * exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2) / 0.05)", false],
+];
+PRESETS.forEach(([name], i) => $("preset").append(new Option(name, i)));
+function choosePreset(i) { const [, expr, snap] = PRESETS[i]; $("expr").value = expr; $("snap").checked = snap; }
+$("preset").onchange = () => { choosePreset($("preset").value); applyFunction(); };
+choosePreset(0);
+
+function applyFunction() {
+  $("exprErr").textContent = "";
+  let f;
+  try {
+    // Runs only in this browser; nothing the user types is sent to or evaluated on the server.
+    f = new Function("x", "y", `with (Math) { return (${$("expr").value}); }`);
+  } catch (e) { $("exprErr").textContent = "syntax error: " + e.message; return; }
+  const out = new Float32Array(N * N), snap = $("snap").checked;
+  try {
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const v = Number(f((c + 0.5) / N, 1 - (r + 0.5) / N));
+      if (!Number.isFinite(v)) throw new Error(`not a finite number at x=${fmt((c + 0.5) / N)}, y=${fmt(1 - (r + 0.5) / N)}`);
+      out[r * N + c] = snap ? (v > 0.5 ? HI : LO) : Math.min(HI, Math.max(LO, v));
+    }
+  } catch (e) { $("exprErr").textContent = e.message; return; }
+  snapshot(); fields.a = out; drawA(); run();
+}
+$("apply").onclick = applyFunction;
+$("expr").addEventListener("keydown", e => { if (e.key === "Enter") applyFunction(); });
+
+// ---- hover readout ------------------------------------------------------------------------
+for (const { map } of Object.values(canvases)) {
+  map.addEventListener("pointermove", e => {
+    const [rf, cf] = cellAt(e, map), r = Math.floor(rf), c = Math.floor(cf);
+    if (r < 0 || r >= N || c < 0 || c >= N) return;
+    const i = r * N + c, v = k => fields[k] ? fmt(fields[k][i]) : "–";
+    $("readout").textContent = `x ${fmt((c + 0.5) / N)}  y ${fmt(1 - (r + 0.5) / N)}   a ${v("a")}   ` +
+      `reference u ${v("u")}   predicted u ${v("pred")}   |error| ${v("err")}`;
+  });
+  map.addEventListener("pointerleave", () => { $("readout").textContent = ""; });
+}
+
+// ---- start --------------------------------------------------------------------------------
+fetch("/health").then(r => r.json()).then(h => {
+  const badge = $("badge");
+  if (!h.model_loaded) {
+    badge.textContent = "no model loaded"; badge.className = "badge warn";
+    setStatus(`no checkpoint at ${h.checkpoint}`, true);
+    return;
+  }
+  modelLabel = h.trained ? "trained FNO" : UNTRAINED;
+  badge.textContent = h.trained ? `Predictions: trained FNO · ${(h.params / 1e6).toFixed(2)}M params · CPU`
+                                : `Predictions: ${UNTRAINED}`;
+  badge.className = "badge " + (h.trained ? "ok" : "warn");
+  loadSample(0);
+}).catch(e => setStatus("error: " + e.message, true));
+drawA();
 </script>
 </body>
 </html>

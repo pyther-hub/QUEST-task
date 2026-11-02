@@ -1,41 +1,23 @@
 # TODO — FNO Darcy demo
 
-Status (2026-11-02): demo works end to end with the **untrained** small FNO
-(modes 12, width 32, layers 4; 2,368,001 params). Branch `demo`.
+Status (2026-11-02): the app serves the **trained** small FNO (run v1, Kaggle 2× T4) on CPU at
+128×128 in the PDEBench setting. Deploy steps: `DEPLOY.md`.
 
 ## Done
-- [x] venv + deps; upstream tests: 22 passed, 1 skipped (FSDP needs CUDA)
-- [x] `checkpoints/fno_small_random.pt` via `python -m app.model` (seed 0, src.train format)
-- [x] `app/model.py` — `load_model(path)`, `.predict(a)`; preprocessing delegated to `src.infer`
-- [x] `app/main.py` — `/health`, `/sample?seed=N`, `/predict` (422 on bad shape / NaN / Inf)
-- [x] `app/static/index.html` — a, reference u, predicted u, |error| heatmaps
-- [x] `tests/test_app_model.py`, `tests/test_app_api.py`
+- [x] `app/model.py`: `load_model(path)`, `.predict(a)`, `.trained`; preprocessing delegated to `src.infer`
+- [x] `app/main.py`: `/health`, `/sample?index=N` (exact test-split fields), `/predict`, `/solve` (exact reference)
+- [x] `app/static/index.html`: test sample / draw (two-phase brush, fill, undo) / function input
+      (JS expression, evaluated in the browser), shared colour scale for u, error, timings, hover readout
+- [x] Notebook 01 on Kaggle: train/val/test 9000/500/500 (seeds 0/1/2), 128×128, PDEBench setting
+- [x] Notebook 02 run v1: 47 epochs (early stop, patience 3), test relL2 mean 2.52 %, median 2.00 %
+      → `~/Desktop/QUEST-data/checkpoints/fno_darcy.pt` (+ `fno_darcy_v1.pt`)
+- [x] `deploy/`: CPU Dockerfile, pinned requirements, `make_space.sh` (Docker context + HF Space)
 
-## Kaggle training (2× T4, DDP)
-- [x] `notebooks/01_generate_dataset.ipynb` — train/val/test (4000/500/500, seeds 0/1/2), parallel solve
-- [x] `notebooks/02_train_ddp.ipynb` — config on top; `MODE="precheck"` (batch-size sweep: samples/s,
-      GPU util %, peak mem, recommended batch) and `MODE="train"` (logs, metrics.csv, curves,
-      eval of best.pt on train/val/test). Tested on CPU only (`tests/test_notebooks.py`).
-- [ ] Run 01 on Kaggle, then 02 precheck → set BATCH_SIZE → 02 train; record the numbers here
-- [ ] Download `best.pt` → `checkpoints/fno_small.pt`, serve with `FNO_CHECKPOINT=...`
-
-## Next: UI input
-- [ ] Let the user supply a(x) three ways, all feeding `POST /predict`:
-      upload a 64×64 field (.npy / .csv / grayscale .png), generate a random sample,
-      or hand-draw on the canvas (two-phase brush: a=3 / a=12, plus clear / fill).
-
-## Next: train the small model
-- [ ] Train on CPU (or GPU) with the data already generated:
-      `python -m src.train --data data/darcy_train.npz --modes 12 --width 32 --layers 4 --out checkpoints/fno_small.pt`
-      (try `--epochs 5` first to time an epoch on CPU)
-- [ ] Serve it: `FNO_CHECKPOINT=checkpoints/fno_small.pt uvicorn app.main:app --reload`
-- [ ] Record val relL2 from the training log; compare with `python -m src.infer --checkpoint ... --data ...`
-- [ ] Make the UI label depend on the checkpoint instead of always saying
-      "untrained (random weights)": e.g. add an optional `"label"` key to the checkpoint
-      (`src.infer.load_model` ignores extra keys), return it from `/health`, show it in the UI.
-      Update `test_index` accordingly.
-- [ ] Evaluate on held-out data generated with a different seed (`src.data.darcy --seed 1`),
-      not only the train split.
+## Next
+- [ ] Run v2 (looser patience): if better, copy its best.pt to `fno_darcy.pt` (DEPLOY.md step 2)
+- [ ] Deploy: DEPLOY.md step 4 (Docker) or 5 (Hugging Face Space)
+- [ ] Evaluate on PDEBench's own data (v1, first 200 samples: median 2.14 %, mean 4.55 %;
+      the tail is PDEBench samples that have not reached steady state)
 
 ## Adding your own models
 - [ ] Decide the checkpoint contract for non-FNO2d models. Today `load_model()` →

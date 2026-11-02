@@ -1,0 +1,6 @@
+# Runtime dependencies of the app (torch is installed separately from the CPU wheel index,
+# see Dockerfile). Versions are the ones the test suite runs against.
+numpy==2.5.4
+scipy==1.18.1
+fastapi==0.162.0
+uvicorn==0.54.0

@@ -4,7 +4,10 @@ All model loading goes through load_model(), so a trained (or later quantized)
 checkpoint can be swapped in without touching the API or UI. Preprocessing is
 delegated to src.infer, so it always matches the upstream inference path.
 
-    python -m app.model     # writes checkpoints/fno_small_random.pt
+    python -m app.model     # writes checkpoints/fno_small_random.pt (untrained fallback)
+
+The app serves the trained checkpoint ($FNO_DATA_DIR/checkpoints/fno_darcy.pt, the best.pt
+from notebooks/02_train_ddp.ipynb) at the grid it was trained on: 128x128, PDEBench setting.
 """
 
 from __future__ import annotations
@@ -22,10 +25,11 @@ from src.infer import predict as _infer_predict
 from src.models.fno import FNO2d
 from src.train import load_data
 
-GRID = 64
+GRID = 128
 # Smallest upstream preset; benchmark.py does not pass --layers, so train.py's default (4) applies.
 SMALL_CONFIG = {**PRESETS["small"], "layers": 4}
-DEFAULT_CHECKPOINT = DATA_ROOT / "checkpoints" / "fno_small_random.pt"
+DEFAULT_CHECKPOINT = DATA_ROOT / "checkpoints" / "fno_darcy.pt"
+RANDOM_CHECKPOINT = DATA_ROOT / "checkpoints" / "fno_small_random.pt"
 DEFAULT_DATA = DATA_ROOT / "data" / "darcy_train.npz"
 DEVICE = torch.device("cpu")
 
@@ -35,6 +39,7 @@ class LoadedModel:
     model: FNO2d
     stats: dict
     path: Path
+    trained: bool = True
 
     @property
     def n_params(self) -> int:
@@ -49,10 +54,12 @@ class LoadedModel:
 def load_model(path: Path = DEFAULT_CHECKPOINT) -> LoadedModel:
     """Load a checkpoint in the format src.train saves / src.infer expects."""
     model, stats = _infer_load_model(Path(path), DEVICE)
-    return LoadedModel(model=model, stats=stats, path=Path(path))
+    # Training checkpoints have no "trained" key; build_random_checkpoint marks itself False.
+    trained = bool(torch.load(path, map_location=DEVICE).get("trained", True))
+    return LoadedModel(model=model, stats=stats, path=Path(path), trained=trained)
 
 
-def build_random_checkpoint(path: Path = DEFAULT_CHECKPOINT, data_path: Path = DEFAULT_DATA,
+def build_random_checkpoint(path: Path = RANDOM_CHECKPOINT, data_path: Path = DEFAULT_DATA,
                             n_samples: int = 1200, seed: int = 0) -> Path:
     """Save an untrained small FNO (torch.manual_seed(seed)) in src.train's checkpoint format.
 
@@ -62,12 +69,12 @@ def build_random_checkpoint(path: Path = DEFAULT_CHECKPOINT, data_path: Path = D
     """
     path, data_path = Path(path), Path(data_path)
     if not data_path.exists():
-        generate(n_samples, GRID, 0, data_path)
+        generate(n_samples, 64, 0, data_path)
     _, _, stats = load_data(data_path)
     torch.manual_seed(seed)
     model = FNO2d(**SMALL_CONFIG)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model": model.state_dict(), "config": SMALL_CONFIG, "stats": stats}, path)
+    torch.save({"model": model.state_dict(), "config": SMALL_CONFIG, "stats": stats, "trained": False}, path)
     return path
 
 

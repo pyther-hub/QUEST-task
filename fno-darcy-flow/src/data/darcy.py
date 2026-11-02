@@ -54,6 +54,33 @@ def permeability_from_grf(grf: np.ndarray, hi: float = 12.0, lo: float = 3.0) ->
     return np.where(grf >= 0.0, hi, lo)
 
 
+# PDEBench-setting permeability (same recipe as notebooks/01_generate_dataset.ipynb):
+# 5 Gaussian bumps on cell centres, thresholded at the mean of a batch of 200 to {0.1, 1}.
+BUMPS_LO, BUMPS_HI, N_BUMPS, BUMPS_BATCH = 0.1, 1.0, 5, 200
+
+
+def bumps_permeability(n_samples: int, n: int, rng: np.random.Generator) -> np.ndarray:
+    """(n_samples, n, n) two-phase field in {0.1, 1}; axis 1 is x, axis 2 is y."""
+    xc = (np.arange(n) + 0.5) / n
+    m = rng.uniform(0.0, 1.0, (n_samples, N_BUMPS, 2))
+    s = np.maximum(0.5 * rng.uniform(0.0, 1.0, (n_samples, N_BUMPS)), 1e-6)
+    field = np.zeros((n_samples, n, n))
+    for k in range(N_BUMPS):
+        dx2 = (xc[None, :] - m[:, k, 0:1]) ** 2
+        dy2 = (xc[None, :] - m[:, k, 1:2]) ** 2
+        field += np.exp(-(dx2[:, :, None] + dy2[:, None, :]) / s[:, k, None, None])
+    return np.where(field > field.mean(), BUMPS_HI, BUMPS_LO)
+
+
+def split_sample(index: int, n_split: int, seed: int, n: int, chunk: int = BUMPS_BATCH) -> np.ndarray:
+    """Sample `index` of a notebook-01 split of n_split samples (chunk c drawn with default_rng([seed, c]))."""
+    if not 0 <= index < n_split:
+        raise ValueError(f"index must be in [0, {n_split})")
+    c, i = divmod(index, chunk)
+    size = min(chunk, n_split - c * chunk)
+    return bumps_permeability(size, n, np.random.default_rng([seed, c]))[i]
+
+
 def solve_darcy(a: np.ndarray, f: float = 1.0, h: float | None = None,
                 face: str = "harmonic") -> np.ndarray:
     """Solve -div(a grad u) = f with homogeneous Dirichlet BCs.

@@ -113,6 +113,16 @@ def test_gen_solver_matches_src_with_pdebench_discretisation(tmp_path):
                                    rtol=1e-10)
 
 
+def test_gen_sampler_matches_src(tmp_path):
+    from src.data.darcy import bumps_permeability, split_sample
+    gen = gen_module(tmp_path)
+    np.testing.assert_array_equal(gen.sample_permeability(7, GRID, np.random.default_rng([3, 1])),
+                                  bumps_permeability(7, GRID, np.random.default_rng([3, 1])))
+    split = gen.sample_split(450, 2, GRID, 200)  # last chunk is short (50 samples)
+    for i in (0, 199, 200, 449):
+        np.testing.assert_array_equal(split_sample(i, 450, 2, GRID).astype(np.float32), split[i])
+
+
 def test_gen_eta_helpers(tmp_path):
     gen = gen_module(tmp_path)
     assert gen.fmt_time(5) == "0m05s" and gen.fmt_time(3725) == "1h02m05s"
