@@ -6,7 +6,10 @@ Repo: `./fno-darcy-flow`, cloned from https://github.com/AbdullahRasheed45/fno-d
 - Smallest FNO preset (2,368,001 params), trained on Kaggle with notebook 02 (run v1: test relL2 2.52%).
   The app serves `$FNO_DATA_DIR/checkpoints/fno_darcy.pt`; `fno_small_random.pt` is the untrained fallback.
 - CPU only for serving. 128x128 grid, PDEBench setting (a in {0.1, 1}), the grid the model was trained on.
-- Deploy = CPU Docker image / Hugging Face Docker Space, steps in `fno-darcy-flow/DEPLOY.md`.
+- Main target now: a fully static browser app in `web/` (ONNX model on onnxruntime-web wasm + JS CG solver),
+  deployed to GitHub Pages by `QUEST-task/.github/workflows/pages.yml` (git root is `QUEST-task/`, not this repo).
+  It exports `fno_darcy.pt` if present, else `fno_small_random.pt`.
+- The FastAPI app + CPU Docker / Hugging Face Space (`fno-darcy-flow/DEPLOY.md`) stay as they are and keep their tests.
 - Any file in this repo may be edited, including `src/` and upstream tests. Keep existing tests green.
 
 ## Stack
@@ -15,6 +18,8 @@ Repo: `./fno-darcy-flow`, cloned from https://github.com/AbdullahRasheed45/fno-d
 - FastAPI + uvicorn, pytest (+ httpx for TestClient)
 - Frontend: one `app/static/index.html`, vanilla JS, canvas heatmaps
 - Deploy: `deploy/Dockerfile` (python:3.13-slim + CPU torch), assembled by `deploy/make_space.sh`
+- Browser app: `export/` (onnx, onnxscript, onnxruntime, Python side only), `web/` vanilla JS,
+  onnxruntime-web from jsDelivr (one pinned version, wasm backend, 1 thread), `node --test` with no npm deps
 - Nothing else: no frontend framework, no build step, no database
 
 ## Layout
@@ -27,6 +32,9 @@ deploy/               Dockerfile, requirements.txt (pinned), make_space.sh, spac
   checkpoints/         fno_darcy.pt (served), fno_darcy_v1.pt, fno_small_random.pt
   space/               deploy folder from make_space.sh (Docker context + HF Space)
   data/                darcy_train.npz, pdebench/*.hdf5
+export/fno_dft.py     FNO rebuilt with real DFT matmuls (no FFT) for 128x128, normalisation baked in;
+                      exports web/model.onnx, model.json, golden.json, samples.*, solver fixtures
+web/                  index.html, main.js, solver.js (+ solver.test.js), model.onnx, samples.bin/json, golden.json
 tests/test_app_*.py   one test file per piece
 ```
 
@@ -40,7 +48,9 @@ tests/test_app_*.py   one test file per piece
 - Read the repo code before using it. Take model config, preprocessing and checkpoint format from `src/`, never guess.
 - Every new function gets a test. Run `python -m pytest -q` after each change; all green before saying done.
 - Report only numbers from commands you ran.
-- Ask before adding any dependency beyond fastapi, uvicorn, httpx, h5py.
+- Ask before adding any dependency beyond fastapi, uvicorn, httpx, h5py, onnx, onnxscript, onnxruntime.
+- Browser app: relative URLs only (works under the Pages subpath); the page self-tests on load against golden.json.
+- Tests needing onnx/onnxruntime/node skip when those are missing, so CI without them stays green.
 - Keep it small. Commit after each green step.
 - UI must label predictions "untrained (random weights)" whenever the loaded checkpoint is untrained
   (`"trained": False` in the checkpoint; training checkpoints have no such key).
