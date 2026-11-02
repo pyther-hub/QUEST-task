@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FNO Darcy demo</title>
+<style>
+  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #6e6e73; --card: #fff; --line: #e3e3e6; --soft: #f0f0f2;
+          --warn-bg: #fff4e5; --warn-fg: #8a4b00; --ok-bg: #e8f5ec; --ok-fg: #1d6b34; --err: #b42318; --err-bg: #fdecea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161618; --fg: #ececee; --muted: #9a9aa0; --card: #1f1f22; --line: #333338; --soft: #2a2a2e;
+            --warn-bg: #3a2a12; --warn-fg: #ffcc80; --ok-bg: #16301f; --ok-fg: #8fd6a4; --err: #ff8a80; --err-bg: #3a1714; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; max-width: 760px; }
+  code { font-size: 12.5px; background: var(--soft); padding: 1px 4px; border-radius: 4px; }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 13px;
+           background: var(--soft); color: var(--muted); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .badge.bad { background: var(--err-bg); color: var(--err); }
+  #status { color: var(--muted); }
+  #status.error { color: var(--err); }
+  #banner { display: none; background: var(--err-bg); color: var(--err); border: 1px solid var(--err);
+            border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-weight: 600; }
+  #banner.on { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .tabs { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; margin-bottom: 10px; }
+  .tabs button { background: transparent; color: var(--fg); border: 0; }
+  .tabs button[aria-selected="true"] { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); font-weight: 600; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  button[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: -2px; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: wait; }
+  input, select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--card); color: var(--fg); max-width: 100%; }
+  input[type=range] { width: 110px; padding: 0; }
+  #expr { flex: 1 1 320px; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  #exprErr { color: var(--err); font-size: 13px; margin: 6px 0 0; min-height: 1em; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  #stale { color: var(--warn-fg); font-size: 13px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  figure { margin: 0; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  figcaption { font-weight: 600; margin-bottom: 6px; }
+  figcaption small { font-weight: 400; color: var(--muted); }
+  canvas.map { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; border-radius: 4px; }
+  canvas.map.draw { cursor: crosshair; touch-action: none; }
+  canvas.bar { width: 100%; height: 10px; display: block; margin-top: 6px; border-radius: 2px; }
+  .range { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .metrics { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+  .metrics div span { display: block; color: var(--muted); font-size: 12px; }
+  .metrics div b { font-size: 18px; font-weight: 600; }
+  .metrics div b.bad { color: var(--err); }
+  #readout { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; min-height: 1.4em; margin-top: 8px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>FNO Darcy-flow surrogate, in your browser</h1>
+  <p class="sub">−∇·(a∇u) = 1 on the unit square with u = 0 on the edge, on a 128×128 grid. Pick, draw or
+    write a permeability a(x). The Fourier Neural Operator (ONNX, WebAssembly) predicts the pressure u(x), and a
+    conjugate-gradient finite-volume solver computes it directly. Everything runs on this device.</p>
+  <div class="head">
+    <span class="badge" id="badge">loading model…</span>
+    <span class="badge" id="selftest">self-test pending</span>
+    <span id="status"></span>
+  </div>
+  <div id="banner" role="alert"></div>
+
+  <section class="card">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-pane="sample" aria-selected="true">Test sample</button>
+      <button role="tab" data-pane="draw" aria-selected="false">Draw</button>
+      <button role="tab" data-pane="func" aria-selected="false">Function</button>
+    </div>
+    <div class="pane on" id="pane-sample">
+      <div class="row">
+        <button id="newSample">New sample</button>
+        <span class="hint" id="sampleInfo" style="margin:0"></span>
+      </div>
+      <p class="hint">From the held-out test split that the model never saw during training.</p>
+    </div>
+    <div class="pane" id="pane-draw">
+      <div class="row">
+        <button id="brushHi" aria-pressed="true"><span class="swatch" style="background:#fde725"></span>Permeable a = 1</button>
+        <button id="brushLo" aria-pressed="false"><span class="swatch" style="background:#440154"></span>Tight a = 0.1</button>
+        <label>brush <input id="brush" type="range" min="1" max="24" value="6"></label>
+        <button id="fillLo">Fill tight</button>
+        <button id="fillHi">Fill permeable</button>
+        <button id="undo">Undo</button>
+      </div>
+      <p class="hint">Click and drag on the a(x) panel, then press Solve. The brush paints the two values in the training data, 0.1 and 1.</p>
+    </div>
+    <div class="pane" id="pane-func">
+      <div class="row">
+        <select id="preset" aria-label="preset"></select>
+        <input id="expr" spellcheck="false" aria-label="a(x, y) expression">
+        <label><input id="snap" type="checkbox" checked> snap to {0.1, 1}</label>
+        <button id="apply">Apply</button>
+      </div>
+      <p id="exprErr"></p>
+      <p class="hint">A JavaScript expression in <code>x</code> (left → right) and <code>y</code> (bottom → top), both in [0, 1],
+        evaluated only in this browser. Math functions work without a prefix: <code>sin</code>, <code>exp</code>, <code>hypot</code>, <code>PI</code>, …
+        With snap on, a true or &gt; 0.5 result gives a = 1 and anything else gives a = 0.1. With snap off, values are clamped to [0.1, 1].</p>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="solve" class="primary" disabled>Solve</button>
+    <span id="stale"></span>
+  </div>
+  <div class="grid" id="panels"></div>
+  <div id="readout"></div>
+  <div class="metrics" id="metrics"></div>
+  <p class="note">The model was trained on two-phase fields made from 5 smooth random blobs. Shapes outside that
+    family (thin lines, checkerboards, smooth values between 0.1 and 1) are out of distribution, and the difference panel
+    shows how much that costs. Timings are for one sample on this device (single-threaded WebAssembly for the FNO, plain JS for the solver).</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

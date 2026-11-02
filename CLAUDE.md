@@ -64,6 +64,10 @@ python -m src.data.darcy --compare-pdebench   # downloads ~1.3 GB once into $FNO
 python -m pytest -q
 uvicorn app.main:app --reload    # http://127.0.0.1:8000
 bash deploy/make_space.sh        # deploy folder -> $FNO_DATA_DIR/space, then DEPLOY.md
+pip install onnx onnxscript onnxruntime
+python -m export.fno_dft         # web/model.onnx, model.json, golden.json, samples.*, solver fixtures
+node --test web/solver.test.js   # JS CG solver vs Python fixtures
+python -m http.server 8001 -d web   # static app at http://127.0.0.1:8001
 ```
 
 ## PDEBench comparison
