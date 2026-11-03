@@ -29,13 +29,15 @@ app/main.py           FastAPI app, serves static/index.html
 app/static/index.html sample / draw / function input, heatmaps, error + timings
 deploy/               Dockerfile, requirements.txt (pinned), make_space.sh, space_README.md
 ~/Desktop/QUEST-data/  outside the repo, override with $FNO_DATA_DIR
-  checkpoints/         fno_darcy.pt (served), fno_darcy_v1.pt, fno_small_random.pt
+  checkpoints/         fno_darcy.pt (served, = v1), fno_darcy_v1.pt, fno_darcy_v2.pt (+ .eval.json), fno_small_random.pt
   space/               deploy folder from make_space.sh (Docker context + HF Space)
   data/                darcy_train.npz, pdebench/*.hdf5
 export/fno_dft.py     FNO rebuilt with real DFT matmuls (no FFT) for 128x128, normalisation baked in;
                       exports web/model.onnx, model.json, golden.json, samples.*, solver fixtures
 export/fp16_onnx.py   fp16 + ONNX (fp32, fp16-weight) variants of a checkpoint, accuracy/speed vs fp32;
                       run at the end of notebook 02 -> runs/<RUN>/export/export_eval.json
+export/web_models.py  web/models/<id>/ (fp32 + fp16-weight ONNX, golden) from SPECS checkpoints + web/models.json,
+                      the manifest behind the page's model toggle (v1 = web/model.onnx, unchanged)
 web/                  index.html, main.js, solver.js (+ solver.test.js), model.onnx, samples.bin/json, golden.json
 tests/test_app_*.py   one test file per piece
 ```
@@ -68,6 +70,7 @@ uvicorn app.main:app --reload    # http://127.0.0.1:8000
 bash deploy/make_space.sh        # deploy folder -> $FNO_DATA_DIR/space, then DEPLOY.md
 pip install onnx onnxscript onnxruntime
 python -m export.fno_dft         # web/model.onnx, model.json, golden.json, samples.*, solver fixtures
+python -m export.web_models      # web/models/v2/*, web/models.json (run after fno_dft)
 node --test web/solver.test.js   # JS CG solver vs Python fixtures
 python -m http.server 8001 -d web   # static app at http://127.0.0.1:8001
 ```

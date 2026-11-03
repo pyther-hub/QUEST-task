@@ -1,0 +1,42 @@
+{
+ "grid": 128,
+ "default": "v2",
+ "models": [
+  {
+   "id": "v2",
+   "label": "v2 \u00b7 148 epochs",
+   "precision": "fp32",
+   "file": "models/v2/model.onnx",
+   "golden": "models/v2/golden.json",
+   "tol": 0.0001,
+   "trained": true,
+   "params": 2368001,
+   "file_mb": 9.92,
+   "test_relL2": 0.01636858470737934
+  },
+  {
+   "id": "v2-fp16w",
+   "label": "v2 \u00b7 148 epochs",
+   "precision": "fp16 weights",
+   "file": "models/v2/model_fp16w.onnx",
+   "golden": "models/v2/golden.json",
+   "tol": 0.001,
+   "trained": true,
+   "params": 2368001,
+   "file_mb": 4.97,
+   "test_relL2": 0.01636858470737934
+  },
+  {
+   "id": "v1",
+   "label": "v1 \u00b7 47 epochs",
+   "precision": "fp32",
+   "file": "model.onnx",
+   "golden": "golden.json",
+   "tol": 0.0001,
+   "trained": true,
+   "params": 2368001,
+   "file_mb": 9.92,
+   "test_relL2": 0.02520589902997017
+  }
+ ]
+}

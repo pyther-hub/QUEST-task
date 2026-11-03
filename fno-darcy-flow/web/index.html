@@ -4,131 +4,202 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FNO Darcy demo</title>
+<link rel="icon" href="data:,">
 <style>
-  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #6e6e73; --card: #fff; --line: #e3e3e6; --soft: #f0f0f2;
+  :root { --bg: #f6f6f8; --fg: #1d1d1f; --muted: #6e6e73; --card: #fff; --line: #e3e3e6; --soft: #f0f0f2;
+          --accent: #2a78d6; --accent-soft: #e6f0fb;
           --warn-bg: #fff4e5; --warn-fg: #8a4b00; --ok-bg: #e8f5ec; --ok-fg: #1d6b34; --err: #b42318; --err-bg: #fdecea; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161618; --fg: #ececee; --muted: #9a9aa0; --card: #1f1f22; --line: #333338; --soft: #2a2a2e;
+    :root { --bg: #131315; --fg: #ececee; --muted: #9a9aa0; --card: #1d1d20; --line: #313136; --soft: #28282c;
+            --accent: #5ea1ff; --accent-soft: #1b2a40;
             --warn-bg: #3a2a12; --warn-fg: #ffcc80; --ok-bg: #16301f; --ok-fg: #8fd6a4; --err: #ff8a80; --err-bg: #3a1714; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
+  body { margin: 0; padding: 24px 16px 40px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 system-ui, -apple-system, sans-serif; }
-  main { max-width: 1180px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 16px; max-width: 760px; }
-  code { font-size: 12.5px; background: var(--soft); padding: 1px 4px; border-radius: 4px; }
-  .head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
-  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 13px;
-           background: var(--soft); color: var(--muted); }
+  main { max-width: 1240px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: flex-end; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0; max-width: 720px; }
+  code, kbd { font-size: 12.5px; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  kbd { border: 1px solid var(--line); font-family: inherit; }
+  .head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 600; font-size: 12.5px;
+           background: var(--soft); color: var(--muted); white-space: nowrap; }
   .badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
   .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
   .badge.bad { background: var(--err-bg); color: var(--err); }
-  #status { color: var(--muted); }
+  #status { color: var(--muted); min-height: 1.45em; }
   #status.error { color: var(--err); }
   #banner { display: none; background: var(--err-bg); color: var(--err); border: 1px solid var(--err);
             border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-weight: 600; }
   #banner.on { display: block; }
 
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
-  .tabs { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; margin-bottom: 10px; }
-  .tabs button { background: transparent; color: var(--fg); border: 0; }
+  .layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  @media (min-width: 901px) { .side { position: sticky; top: 16px; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  /* model picker */
+  .models { display: flex; flex-direction: column; gap: 6px; }
+  .model { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center; text-align: left;
+           padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); width: 100%; }
+  .model:hover { border-color: var(--muted); }
+  .model[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .model .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); grid-row: span 2; }
+  .model[aria-checked="true"] .dot { border-color: var(--accent); background: radial-gradient(var(--accent) 45%, transparent 50%); }
+  .model .name { font-weight: 600; }
+  .model .meta { color: var(--muted); font-size: 12px; grid-column: 2 / 4; font-variant-numeric: tabular-nums; }
+  .model .err { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+  .model .state { font-size: 11.5px; color: var(--muted); }
+  .progress { height: 4px; background: var(--soft); border-radius: 2px; overflow: hidden; margin-top: 8px; visibility: hidden; }
+  .progress.on { visibility: visible; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  #selftest { margin-top: 8px; white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+
+  .tabs { display: flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; margin-bottom: 10px; }
+  .tabs button { flex: 1; background: transparent; color: var(--fg); border: 0; padding: 5px 8px; }
   .tabs button[aria-selected="true"] { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); font-weight: 600; }
   .pane { display: none; }
   .pane.on { display: block; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
-  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+  button { font: inherit; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line);
            background: var(--card); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); }
   button[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: -2px; font-weight: 600; }
-  button:disabled { opacity: .5; cursor: wait; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   input, select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
                   background: var(--card); color: var(--fg); max-width: 100%; }
-  input[type=range] { width: 110px; padding: 0; }
-  #expr { flex: 1 1 320px; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-  #exprErr { color: var(--err); font-size: 13px; margin: 6px 0 0; min-height: 1em; }
+  input[type=range] { width: 100px; padding: 0; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); }
+  #preset { width: 100%; }
+  #expr { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  #exprErr { color: var(--err); font-size: 12.5px; margin: 6px 0 0; min-height: 1em; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-  #stale { color: var(--warn-fg); font-size: 13px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .actions .primary { flex: 1; padding: 9px 12px; }
+  #stale { color: var(--warn-fg); font-size: 12.5px; width: 100%; }
+  #stale:empty { display: none; }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-  figure { margin: 0; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
-  figcaption { font-weight: 600; margin-bottom: 6px; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px;
+             font-variant-numeric: tabular-nums; }
+  .metric { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 64px; }
+  .metric span { display: block; color: var(--muted); font-size: 12px; }
+  .metric b { font-size: 20px; font-weight: 650; }
+  .metric small { display: block; color: var(--muted); font-size: 11.5px; }
+  .metric.hero b { color: var(--accent); }
+  .metric.bad b, .metric.bad small { color: var(--err); }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; position: relative; }
+  figcaption { font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
   figcaption small { font-weight: 400; color: var(--muted); }
-  canvas.map { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; border-radius: 4px; }
+  canvas.map { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; border-radius: 6px; background: var(--soft); }
   canvas.map.draw { cursor: crosshair; touch-action: none; }
   canvas.bar { width: 100%; height: 10px; display: block; margin-top: 6px; border-radius: 2px; }
   .range { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
-  .metrics { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 12px; font-variant-numeric: tabular-nums; }
-  .metrics div span { display: block; color: var(--muted); font-size: 12px; }
-  .metrics div b { font-size: 18px; font-weight: 600; }
-  .metrics div b.bad { color: var(--err); }
+  .cross { position: absolute; pointer-events: none; width: 9px; height: 9px; margin: -5px 0 0 -5px; border: 1.5px solid #fff;
+           border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.6); display: none; }
   #readout { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; min-height: 1.4em; margin-top: 8px; }
-  .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+  .note { color: var(--muted); font-size: 12.5px; margin-top: 16px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>FNO Darcy-flow surrogate, in your browser</h1>
-  <p class="sub">−∇·(a∇u) = 1 on the unit square with u = 0 on the edge, on a 128×128 grid. Pick, draw or
-    write a permeability a(x). The Fourier Neural Operator (ONNX, WebAssembly) predicts the pressure u(x), and a
-    conjugate-gradient finite-volume solver computes it directly. Everything runs on this device.</p>
-  <div class="head">
-    <span class="badge" id="badge">loading model…</span>
-    <span class="badge" id="selftest">self-test pending</span>
-    <span id="status"></span>
-  </div>
+  <header>
+    <div>
+      <h1>FNO Darcy-flow surrogate, in your browser</h1>
+      <p class="sub">−∇·(a∇u) = 1 on the unit square with u = 0 on the edge, 128×128 grid. Pick, draw or write a permeability
+        a(x). A Fourier Neural Operator (ONNX on WebAssembly) predicts the pressure u(x), and a conjugate-gradient solver
+        computes it exactly. Everything runs on this device.</p>
+    </div>
+    <div class="head">
+      <span class="badge" id="badge">loading…</span>
+      <span id="status"></span>
+    </div>
+  </header>
   <div id="banner" role="alert"></div>
 
-  <section class="card">
-    <div class="tabs" role="tablist">
-      <button role="tab" data-pane="sample" aria-selected="true">Test sample</button>
-      <button role="tab" data-pane="draw" aria-selected="false">Draw</button>
-      <button role="tab" data-pane="func" aria-selected="false">Function</button>
-    </div>
-    <div class="pane on" id="pane-sample">
-      <div class="row">
-        <button id="newSample">New sample</button>
-        <span class="hint" id="sampleInfo" style="margin:0"></span>
-      </div>
-      <p class="hint">From the held-out test split that the model never saw during training.</p>
-    </div>
-    <div class="pane" id="pane-draw">
-      <div class="row">
-        <button id="brushHi" aria-pressed="true"><span class="swatch" style="background:#fde725"></span>Permeable a = 1</button>
-        <button id="brushLo" aria-pressed="false"><span class="swatch" style="background:#440154"></span>Tight a = 0.1</button>
-        <label>brush <input id="brush" type="range" min="1" max="24" value="6"></label>
-        <button id="fillLo">Fill tight</button>
-        <button id="fillHi">Fill permeable</button>
-        <button id="undo">Undo</button>
-      </div>
-      <p class="hint">Click and drag on the a(x) panel, then press Solve. The brush paints the two values in the training data, 0.1 and 1.</p>
-    </div>
-    <div class="pane" id="pane-func">
-      <div class="row">
-        <select id="preset" aria-label="preset"></select>
-        <input id="expr" spellcheck="false" aria-label="a(x, y) expression">
-        <label><input id="snap" type="checkbox" checked> snap to {0.1, 1}</label>
-        <button id="apply">Apply</button>
-      </div>
-      <p id="exprErr"></p>
-      <p class="hint">A JavaScript expression in <code>x</code> (left → right) and <code>y</code> (bottom → top), both in [0, 1],
-        evaluated only in this browser. Math functions work without a prefix: <code>sin</code>, <code>exp</code>, <code>hypot</code>, <code>PI</code>, …
-        With snap on, a true or &gt; 0.5 result gives a = 1 and anything else gives a = 0.1. With snap off, values are clamped to [0.1, 1].</p>
-    </div>
-  </section>
+  <div class="layout">
+    <aside class="side">
+      <section class="card">
+        <h2>Model</h2>
+        <div class="models" id="models" role="radiogroup" aria-label="model"></div>
+        <div class="progress" id="progress"><i></i></div>
+        <div id="selftest" class="badge">self-test pending</div>
+      </section>
 
-  <div class="actions">
-    <button id="solve" class="primary" disabled>Solve</button>
-    <span id="stale"></span>
+      <section class="card">
+        <h2>Input a(x)</h2>
+        <div class="tabs" role="tablist">
+          <button role="tab" data-pane="sample" aria-selected="true">Test sample</button>
+          <button role="tab" data-pane="draw" aria-selected="false">Draw</button>
+          <button role="tab" data-pane="func" aria-selected="false">Function</button>
+        </div>
+        <div class="pane on" id="pane-sample">
+          <div class="row">
+            <button id="prevSample" aria-label="previous sample">←</button>
+            <button id="newSample">Random sample</button>
+            <button id="nextSample" aria-label="next sample">→</button>
+          </div>
+          <p class="hint" id="sampleInfo"></p>
+          <p class="hint">From the held-out test split; no model saw it during training.</p>
+        </div>
+        <div class="pane" id="pane-draw">
+          <div class="row">
+            <button id="brushHi" aria-pressed="true"><span class="swatch" style="background:#fde725"></span>a = 1</button>
+            <button id="brushLo" aria-pressed="false"><span class="swatch" style="background:#440154"></span>a = 0.1</button>
+            <label>size <input id="brush" type="range" min="1" max="24" value="6"></label>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="fillLo">Fill 0.1</button>
+            <button id="fillHi">Fill 1</button>
+            <button id="undo">Undo</button>
+          </div>
+          <p class="hint">Drag on the a(x) panel. The brush paints the two values in the training data, 0.1 and 1.</p>
+        </div>
+        <div class="pane" id="pane-func">
+          <select id="preset" aria-label="preset"></select>
+          <div class="row" style="margin-top:6px">
+            <input id="expr" spellcheck="false" aria-label="a(x, y) expression">
+          </div>
+          <div class="row" style="margin-top:6px">
+            <label><input id="snap" type="checkbox" checked> snap to {0.1, 1}</label>
+            <button id="apply">Apply</button>
+          </div>
+          <p id="exprErr"></p>
+          <p class="hint">JavaScript in <code>x</code> (left → right) and <code>y</code> (bottom → top) in [0, 1], evaluated only in
+            this browser. <code>sin</code>, <code>exp</code>, <code>hypot</code>, <code>PI</code>, … work without a prefix.
+            Snap on: true or &gt; 0.5 gives 1, else 0.1. Snap off: clamped to [0.1, 1].</p>
+        </div>
+      </section>
+
+      <section class="card actions">
+        <button id="solve" class="primary" disabled>Solve</button>
+        <label><input id="auto" type="checkbox" checked> auto</label>
+        <span id="stale"></span>
+      </section>
+      <p class="hint" style="margin:0 4px">Keys: <kbd>S</kbd> solve · <kbd>N</kbd> random sample · <kbd>←</kbd><kbd>→</kbd> prev/next ·
+        <kbd>M</kbd> next model · <kbd>⌘Z</kbd> undo</p>
+    </aside>
+
+    <section>
+      <div class="metrics" id="metrics"></div>
+      <div class="grid" id="panels"></div>
+      <div id="readout"></div>
+      <p class="note">The models were trained on two-phase fields made from 5 smooth random blobs. Shapes outside that family
+        (thin lines, checkerboards, smooth values between 0.1 and 1) are out of distribution, and the difference panel shows
+        what that costs. Timings are for one sample on this device: single-threaded WebAssembly for the FNO, plain JS for
+        the solver. The first run after switching models includes warm-up.</p>
+    </section>
   </div>
-  <div class="grid" id="panels"></div>
-  <div id="readout"></div>
-  <div class="metrics" id="metrics"></div>
-  <p class="note">The model was trained on two-phase fields made from 5 smooth random blobs. Shapes outside that
-    family (thin lines, checkerboards, smooth values between 0.1 and 1) are out of distribution, and the difference panel
-    shows how much that costs. Timings are for one sample on this device (single-threaded WebAssembly for the FNO, plain JS for the solver).</p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 <script type="module" src="./main.js"></script>

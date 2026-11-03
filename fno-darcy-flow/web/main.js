@@ -5,7 +5,7 @@ import { solveDarcy } from "./solver.js";
 const ORT_VERSION = "1.20.1";  // must match the <script> tag in index.html
 const N = 128, LO = 0.1, HI = 1.0;
 const UNTRAINED = "untrained (random weights)";
-const SELF_TEST_TOL = 1e-4;
+const STORE_KEY = "fno-darcy-model";
 
 /* global ort */
 ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
@@ -18,10 +18,10 @@ const CMAPS = {
   inferno: ["#000004","#1b0c41","#4a0c6b","#781c6d","#a52c60","#cf4446","#ed6925","#fb9b06","#f7d13d","#fcffa4"],
 };
 const PANELS = [
-  { key: "a",    title: "permeability a(x)", note: "input",                cmap: "viridis" },
-  { key: "pred", title: "FNO u(x)",          note: "neural operator",      cmap: "magma" },
-  { key: "u",    title: "solver u(x)",       note: "CG, same scale as FNO", cmap: "magma" },
-  { key: "err",  title: "|difference|",      note: "|FNO − solver|",       cmap: "inferno" },
+  { key: "a",    title: "permeability a(x)", note: "input · drag to paint", cmap: "viridis" },
+  { key: "pred", title: "FNO u(x)",          note: "shared scale",          cmap: "magma" },
+  { key: "u",    title: "solver u(x)",       note: "shared scale",          cmap: "magma" },
+  { key: "err",  title: "|difference|",      note: "|FNO − solver|",        cmap: "inferno" },
 ];
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const LUT = Object.fromEntries(Object.entries(CMAPS).map(([k, stops]) => {
@@ -35,24 +35,35 @@ const LUT = Object.fromEntries(Object.entries(CMAPS).map(([k, stops]) => {
 
 const $ = id => document.getElementById(id);
 const fmt = v => v === 0 ? "0" : Math.abs(v) >= 1e-2 && Math.abs(v) < 1e3 ? v.toFixed(3) : v.toExponential(2);
+const pct = v => (100 * v).toFixed(2) + " %";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 const relL2 = (x, ref) => {
   let d = 0, s = 0;
   for (let i = 0; i < ref.length; i++) { d += (x[i] - ref[i]) ** 2; s += ref[i] ** 2; }
   return Math.sqrt(d / s);
 };
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+async function fetchOk(url, as) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} ${r.status}`);
+  return r[as]();
+}
 
 // Fields are flat Float32Arrays, row-major: index r * N + c, row 0 at the top (y = 1).
 const fields = { a: new Float32Array(N * N).fill(LO), u: null, pred: null, err: null };
 const canvases = {};
 for (const p of PANELS) {
   const fig = el("figure");
-  fig.append(el("figcaption", "", `${p.title} <small>${p.note}</small>`));
-  const map = el("canvas", "map"), bar = el("canvas", "bar"), range = el("div", "range");
+  fig.append(el("figcaption", "", `<span>${p.title}</span><small>${p.note}</small>`));
+  const map = el("canvas", "map"), bar = el("canvas", "bar"), range = el("div", "range"), cross = el("div", "cross");
   map.width = map.height = N; bar.width = 256; bar.height = 1;
-  fig.append(map, bar, range);
+  fig.append(map, bar, range, cross);
   $("panels").append(fig);
-  canvases[p.key] = { map, range, cmap: p.cmap };
+  canvases[p.key] = { map, range, cross, cmap: p.cmap };
   const bctx = bar.getContext("2d"), img = bctx.createImageData(256, 1), lut = LUT[p.cmap];
   for (let i = 0; i < 256; i++) img.data.set([lut[i*3], lut[i*3+1], lut[i*3+2], 255], i * 4);
   bctx.putImageData(img, 0, 0);
@@ -87,87 +98,215 @@ function setStatus(text, isError = false) {
   $("status").className = isError ? "error" : "";
 }
 function showError(text) { $("banner").textContent = text; $("banner").classList.add("on"); }
+function hideError() { $("banner").classList.remove("on"); }
 // Called whenever a(x) changes: outputs no longer belong to the shown input.
-function changed() { drawA(); if (fields.pred) $("stale").textContent = "a(x) changed: press Solve to update"; }
+function changed() {
+  drawA();
+  if ($("auto").checked) run();
+  else if (fields.pred) $("stale").textContent = "a(x) changed: press Solve to update";
+}
 
-// ---- model --------------------------------------------------------------------------------
-let session = null, modelLabel = "";
-async function fno(a) {
+// ---- models (models.json manifest; falls back to the single model.json/model.onnx) ----------
+let models = [], current = null;
+const sessions = new Map();  // id -> Promise<{ session, test }>
+const ready = new Set();     // ids whose session finished loading
+
+async function loadManifest() {
+  try {
+    return await fetchOk("./models.json", "json");
+  } catch {
+    const m = await fetchOk("./model.json", "json");
+    return { default: "default", models: [{ id: "default", label: m.trained ? "trained FNO" : UNTRAINED, precision: "fp32",
+      file: "model.onnx", golden: "golden.json", tol: 1e-4, trained: m.trained, params: m.params, file_mb: null, test_relL2: null }] };
+  }
+}
+
+const modelName = m => m.trained ? `${m.label}${m.precision === "fp32" ? "" : " · " + m.precision}` : UNTRAINED;
+
+function renderModels() {
+  $("models").replaceChildren(...models.map(m => {
+    const b = el("button", "model");
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", m === current);
+    b.dataset.id = m.id;
+    const err = m.trained && m.test_relL2 != null ? `test ${pct(m.test_relL2)}` : m.trained ? "" : "untrained";
+    b.innerHTML = `<span class="dot"></span><span class="name">${esc(m.trained ? m.label : UNTRAINED)}</span>` +
+      `<span class="err">${err}</span>` +
+      `<span class="meta">${esc(m.precision)}${m.file_mb ? ` · ${m.file_mb.toFixed(1)} MB` : ""}` +
+      ` · <span class="state" id="state-${m.id}">${sessions.has(m.id) ? "loaded" : "not loaded"}</span></span>`;
+    b.onclick = () => selectModel(m.id);
+    return b;
+  }));
+}
+
+// Download with a progress bar (content-length may be the compressed size, so clamp to 100 %).
+async function download(url, onProgress) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} ${r.status}`);
+  const total = +r.headers.get("content-length") || 0;
+  if (!r.body || !total) return new Uint8Array(await r.arrayBuffer());
+  const reader = r.body.getReader(), chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.length;
+    onProgress(Math.min(1, got / total));
+  }
+  const out = new Uint8Array(got);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+
+async function runSession(session, a) {
   const out = await session.run({ a: new ort.Tensor("float32", Float32Array.from(a), [1, 1, N, N]) });
   return out.u.data;
 }
 
-async function selfTest() {
-  const g = await (await fetch("./golden.json")).json();
-  const u = await fno(g.a);
+// Self-test: the in-browser model vs the PyTorch output saved in the model's golden.json.
+async function selfTest(m, session) {
+  const g = await fetchOk("./" + m.golden, "json");
+  const u = await runSession(session, g.a);
   let maxErr = 0;
   for (let i = 0; i < u.length; i++) maxErr = Math.max(maxErr, Math.abs(u[i] - g.u[i]));
-  const rel = relL2(u, g.u), badge = $("selftest");
-  if (rel > SELF_TEST_TOL || !Number.isFinite(rel)) {
+  const rel = relL2(u, g.u);
+  return { ok: Number.isFinite(rel) && rel <= m.tol, rel, maxErr, tol: m.tol };
+}
+
+function loadModel(m) {
+  if (!sessions.has(m.id)) {
+    const p = (async () => {
+      const bar = $("progress"), fill = bar.firstElementChild, state = () => $(`state-${m.id}`);
+      bar.classList.add("on"); fill.style.width = "0";
+      try {
+        const bytes = await download("./" + m.file, f => {
+          fill.style.width = (100 * f).toFixed(0) + "%";
+          if (state()) state().textContent = `downloading ${(100 * f).toFixed(0)} %`;
+        });
+        if (state()) state().textContent = "starting…";
+        const session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"] });
+        const test = await selfTest(m, session);
+        if (state()) state().textContent = "loaded";
+        return { session, test };
+      } finally {
+        bar.classList.remove("on");
+      }
+    })();
+    p.catch(() => sessions.delete(m.id));  // allow a retry after a failed download
+    sessions.set(m.id, p);
+  }
+  return sessions.get(m.id);
+}
+
+function showSelfTest(m, t) {
+  const badge = $("selftest");
+  if (!t.ok) {
     badge.textContent = "self-test FAILED"; badge.className = "badge bad";
-    showError(`Self-test failed: the in-browser FNO disagrees with PyTorch on golden.json ` +
-              `(relL2 ${rel.toExponential(2)} > ${SELF_TEST_TOL}, max error ${maxErr.toExponential(2)}). Predictions are not trustworthy.`);
+    showError(`Self-test failed for ${modelName(m)}: the in-browser FNO disagrees with PyTorch on ${m.golden} ` +
+              `(relL2 ${t.rel.toExponential(2)} > ${t.tol}, max error ${t.maxErr.toExponential(2)}). Predictions are not trustworthy.`);
   } else {
-    badge.textContent = `self-test passed · max err ${maxErr.toExponential(1)} · relL2 ${rel.toExponential(1)}`;
+    hideError();
+    badge.textContent = `self-test passed · relL2 ${t.rel.toExponential(1)} ≤ ${t.tol} · max err ${t.maxErr.toExponential(1)}`;
     badge.className = "badge ok";
   }
 }
 
+function showModelBadge(m) {
+  const badge = $("badge");
+  badge.textContent = m.trained ? `Predictions: ${modelName(m)} · ${(m.params / 1e6).toFixed(2)}M params · in-browser`
+                                : `Predictions: ${UNTRAINED}`;
+  badge.className = "badge " + (m.trained ? "ok" : "warn");
+}
+
+let selecting = 0;
+async function selectModel(id) {
+  const m = models.find(x => x.id === id);
+  if (!m || m === current) return;
+  const token = ++selecting;
+  current = m;
+  store.set(STORE_KEY, id);
+  renderModels();
+  showModelBadge(m);
+  $("selftest").textContent = "self-test pending"; $("selftest").className = "badge";
+  $("solve").disabled = true;
+  setStatus(`loading ${modelName(m)}…`);
+  try {
+    const { test } = await loadModel(m);
+    ready.add(m.id);
+    if (token !== selecting) return;  // the user picked another model meanwhile
+    showSelfTest(m, test);
+    setStatus("");
+    $("solve").disabled = false;
+    if (fields.pred || $("auto").checked) run();
+  } catch (e) {
+    if (token !== selecting) return;
+    setStatus("error: " + e.message, true);
+    showError(`Could not load ${modelName(m)}: ${e.message}`);
+    renderModels();
+  }
+}
+
 // ---- solve --------------------------------------------------------------------------------
-let busy = false;
+let busy = false, again = false;
 async function run() {
-  if (busy || !session) return;
-  busy = true; $("solve").disabled = true; $("stale").textContent = "";
+  if (!current || !ready.has(current.id)) return;
+  if (busy) { again = true; return; }  // rerun once the current solve finishes, with the newest a(x)
+  busy = true; again = false; $("stale").textContent = "";
   setStatus("running FNO and solver…");
   await new Promise(r => setTimeout(r, 0));  // let the status paint before the solver blocks
+  const m = current;
   try {
+    const { session } = await sessions.get(m.id);
     const a = fields.a.slice();
     let t = performance.now();
-    const pred = await fno(a);
+    const pred = await runSession(session, a);
     const fnoMs = performance.now() - t;
     t = performance.now();
     const cg = solveDarcy(a, N);
     const cgMs = performance.now() - t;
 
     fields.pred = Float32Array.from(pred);
-    const metrics = [];
+    const metric = (label, value, note = "", cls = "") =>
+      `<div class="metric ${cls}"><span>${label}</span><b>${value}</b><small>${note}</small></div>`;
+    let gap;
     if (cg.converged) {
       fields.u = Float32Array.from(cg.u);
       fields.err = fields.pred.map((v, i) => Math.abs(v - fields.u[i]));
       const [lo, hi] = extent(fields.u, fields.pred);
       draw("pred", fields.pred, lo, hi); draw("u", fields.u, lo, hi);
       draw("err", fields.err, 0, extent(fields.err)[1]);
-      metrics.push(["relative gap ‖FNO − solver‖ / ‖solver‖", (100 * relL2(fields.pred, fields.u)).toFixed(2) + " %"],
-                   ["max |difference|", fmt(extent(fields.err)[1])]);
+      gap = metric("relative gap", pct(relL2(fields.pred, fields.u)), `max |diff| ${fmt(extent(fields.err)[1])}`, "hero");
     } else {
       const [lo, hi] = extent(fields.pred);
       draw("pred", fields.pred, lo, hi); clearPanel("u"); clearPanel("err");
-      metrics.push(["relative gap", "n/a"]);
+      gap = metric("relative gap", "n/a", "solver did not converge");
     }
-    metrics.push(
-      ["FNO (wasm)", fnoMs.toFixed(0) + " ms"],
-      ["CG solver (JS)", cgMs.toFixed(0) + " ms"],
-      ["CG", cg.converged ? `${cg.iters} iters · residual ${cg.relres.toExponential(1)}`
-                          : `<b class="bad">did not converge</b>`],
-      ["model", modelLabel],
-    );
-    $("metrics").innerHTML = metrics.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+    const ratio = cgMs / fnoMs;
+    const speedup = !(fnoMs > 0) ? "" : ratio >= 1 ? `${ratio.toFixed(1)}× faster than the solver` : `${(1 / ratio).toFixed(1)}× slower than the solver`;
+    $("metrics").innerHTML = [
+      gap,
+      metric("FNO (wasm)", fnoMs.toFixed(0) + " ms", speedup),
+      metric("CG solver (JS)", cgMs.toFixed(0) + " ms",
+             `${cg.converged ? "" : "did not converge · "}${cg.iters} iters · residual ${cg.relres.toExponential(1)}`,
+             cg.converged ? "" : "bad"),
+      metric("model", esc(modelName(m)), m.trained && m.test_relL2 != null ? `test-set mean ${pct(m.test_relL2)}` : ""),
+    ].join("");
     setStatus(cg.converged ? "" : `solver did not converge after ${cg.iters} iterations (residual ${cg.relres.toExponential(2)}); no solver result shown`, !cg.converged);
   } catch (e) {
     setStatus("error: " + e.message, true);
   } finally {
-    busy = false; $("solve").disabled = false;
+    busy = false;
+    if (again || m !== current) run();
   }
 }
 $("solve").onclick = run;
+$("auto").onchange = () => { if ($("auto").checked && $("stale").textContent) run(); };
 
 // ---- undo history -------------------------------------------------------------------------
 const history = [];
 function snapshot() { history.push(fields.a.slice()); if (history.length > 30) history.shift(); }
 $("undo").onclick = () => { if (history.length) { fields.a = history.pop(); changed(); } };
-document.addEventListener("keydown", e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "z" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("undo").click(); }
-});
 
 // ---- tabs ---------------------------------------------------------------------------------
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
@@ -178,18 +317,25 @@ const showTab = name => document.querySelector(`.tabs button[data-pane="${name}"
 
 // ---- test samples (samples.bin: count x [a, u] x N x N float32) ---------------------------
 let samples = null, sampleMeta = null, sampleIdx = -1;
-function newSample() {
+function showSample(k) {
+  if (!samples) return;
+  sampleIdx = (k + sampleMeta.count) % sampleMeta.count;
+  snapshot();
+  fields.a = samples.slice(2 * sampleIdx * N * N, (2 * sampleIdx + 1) * N * N);
+  $("sampleInfo").textContent = `test sample #${sampleMeta.indices[sampleIdx]} (${sampleIdx + 1} of ${sampleMeta.count} bundled)`;
+  showTab("sample");
+  changed();
+  if (!$("auto").checked) run();  // a new sample always gets solved
+}
+function randomSample() {
   if (!samples) return;
   let k;
   do { k = Math.floor(Math.random() * sampleMeta.count); } while (k === sampleIdx && sampleMeta.count > 1);
-  sampleIdx = k;
-  snapshot();
-  fields.a = samples.slice(2 * k * N * N, (2 * k + 1) * N * N);
-  $("sampleInfo").textContent = `test sample #${sampleMeta.indices[k]} (${k + 1} of ${sampleMeta.count} bundled)`;
-  changed();
-  run();
+  showSample(k);
 }
-$("newSample").onclick = newSample;
+$("newSample").onclick = randomSample;
+$("prevSample").onclick = () => showSample(sampleIdx - 1);
+$("nextSample").onclick = () => showSample(sampleIdx + 1);
 
 // ---- drawing ------------------------------------------------------------------------------
 let brushValue = HI;
@@ -264,39 +410,55 @@ function applyFunction() {
 $("apply").onclick = applyFunction;
 $("expr").addEventListener("keydown", e => { if (e.key === "Enter") applyFunction(); });
 
-// ---- hover readout ------------------------------------------------------------------------
+// ---- hover readout + linked crosshair -----------------------------------------------------
+const hideCross = () => { for (const c of Object.values(canvases)) c.cross.style.display = "none"; };
 for (const { map } of Object.values(canvases)) {
   map.addEventListener("pointermove", e => {
     const [rf, cf] = cellAt(e, map), r = Math.floor(rf), c = Math.floor(cf);
     if (r < 0 || r >= N || c < 0 || c >= N) return;
+    for (const o of Object.values(canvases)) {
+      o.cross.style.display = "block";
+      o.cross.style.left = o.map.offsetLeft + (c + 0.5) / N * o.map.offsetWidth + "px";
+      o.cross.style.top = o.map.offsetTop + (r + 0.5) / N * o.map.offsetHeight + "px";
+    }
     const i = r * N + c, v = k => fields[k] ? fmt(fields[k][i]) : "–";
     $("readout").textContent = `x ${fmt((c + 0.5) / N)}  y ${fmt(1 - (r + 0.5) / N)}   a ${v("a")}   ` +
       `FNO u ${v("pred")}   solver u ${v("u")}   |difference| ${v("err")}`;
   });
-  map.addEventListener("pointerleave", () => { $("readout").textContent = ""; });
+  map.addEventListener("pointerleave", () => { $("readout").textContent = ""; hideCross(); });
 }
+
+// ---- keyboard -----------------------------------------------------------------------------
+document.addEventListener("keydown", e => {
+  const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" && !typing) { e.preventDefault(); $("undo").click(); return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "s" && !$("solve").disabled) run();
+  else if (k === "n") randomSample();
+  else if (e.key === "ArrowLeft") showSample(sampleIdx - 1);
+  else if (e.key === "ArrowRight") showSample(sampleIdx + 1);
+  else if (k === "m" && current) selectModel(models[(models.indexOf(current) + 1) % models.length].id);
+  else return;
+  e.preventDefault();
+});
 
 // ---- start --------------------------------------------------------------------------------
 drawA();
 (async () => {
   try {
-    setStatus("loading model…");
-    const [meta, bin, sm] = await Promise.all([
-      fetch("./model.json").then(r => { if (!r.ok) throw new Error(`model.json ${r.status}`); return r.json(); }),
-      fetch("./samples.bin").then(r => { if (!r.ok) throw new Error(`samples.bin ${r.status}`); return r.arrayBuffer(); }),
-      fetch("./samples.json").then(r => { if (!r.ok) throw new Error(`samples.json ${r.status}`); return r.json(); }),
+    setStatus("loading…");
+    const [manifest, bin, sm] = await Promise.all([
+      loadManifest(), fetchOk("./samples.bin", "arrayBuffer"), fetchOk("./samples.json", "json"),
     ]);
     samples = new Float32Array(bin); sampleMeta = sm;
-    session = await ort.InferenceSession.create("./model.onnx", { executionProviders: ["wasm"] });
-    modelLabel = meta.trained ? "trained FNO" : UNTRAINED;
-    const badge = $("badge");
-    badge.textContent = meta.trained ? `Predictions: trained FNO · ${(meta.params / 1e6).toFixed(2)}M params · in-browser`
-                                     : `Predictions: ${UNTRAINED}`;
-    badge.className = "badge " + (meta.trained ? "ok" : "warn");
-    await selfTest();
-    $("solve").disabled = false;
-    setStatus("");
-    newSample();
+    models = manifest.models;
+    const wanted = new URLSearchParams(location.search).get("model") || store.get(STORE_KEY);
+    const first = models.find(m => m.id === wanted) || models.find(m => m.id === manifest.default) || models[0];
+    // Show a sample right away; it is solved as soon as the model is ready.
+    sampleIdx = -1;
+    showSample(0);
+    await selectModel(first.id);
   } catch (e) {
     setStatus("error: " + e.message, true);
     showError("Could not start: " + e.message);
